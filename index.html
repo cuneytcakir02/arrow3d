@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Arrow Out 3D — Küp Bulmaca</title>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body { width:100%; height:100%; overflow:hidden; }
+  body {
+    font-family:'Fredoka','Arial Rounded MT Bold','Nunito',system-ui,sans-serif;
+    background:#e9e9ec;
+    background-image:radial-gradient(circle at 30% 20%, #f2f2f5 0%, #e6e6ea 60%, #dcdce2 100%);
+    user-select:none; -webkit-user-select:none;
+    position:fixed; inset:0; touch-action:none; overscroll-behavior:none;
+  }
+  canvas#game { display:block; width:100%; height:100%; touch-action:none; cursor:grab; }
+  canvas#game:active { cursor:grabbing; }
+
+  /* ---------- top HUD bar (screenshot style) ---------- */
+  #hud {
+    position:fixed; top:calc(14px + env(safe-area-inset-top)); left:50%; transform:translateX(-50%);
+    width:min(560px, calc(100% - 28px));
+    z-index:10; pointer-events:none;
+  }
+  .bar {
+    background:linear-gradient(#fdf6de,#f8ecc8);
+    border:5px solid #f0b23c;
+    border-bottom-width:8px;
+    border-radius:34px;
+    padding:12px 16px;
+    display:flex; align-items:center; justify-content:space-between; gap:12px;
+    box-shadow:0 8px 18px rgba(120,90,20,.18), inset 0 3px 0 rgba(255,255,255,.85);
+    pointer-events:auto;
+  }
+  .gear {
+    width:56px; height:56px; border-radius:50%;
+    background:radial-gradient(circle at 35% 30%, #ffd873, #f5a91e 70%);
+    border:none; box-shadow:0 4px 0 #c97f0e, inset 0 3px 4px rgba(255,255,255,.7);
+    font-size:26px; cursor:pointer; flex:none;
+    display:flex; align-items:center; justify-content:center;
+    transition:transform .12s;
+  }
+  .gear:active { transform:translateY(3px); box-shadow:0 1px 0 #c97f0e; }
+  .timer {
+    background:linear-gradient(#f3c1a2,#e9a684);
+    border-radius:22px; padding:10px 22px 12px;
+    box-shadow:inset 0 -5px 0 rgba(160,90,55,.35), inset 0 4px 4px rgba(255,255,255,.5), 0 3px 6px rgba(150,90,40,.25);
+    display:flex; align-items:center; gap:10px; flex:none;
+  }
+  .timer .clock { font-size:26px; filter:drop-shadow(0 2px 1px rgba(120,60,20,.3)); }
+  .big-num {
+    font-weight:700; font-size:32px; color:#fff; letter-spacing:1px;
+    text-shadow:0 3px 0 #a98db8, 0 4px 5px rgba(90,60,120,.35);
+    -webkit-text-stroke:1px #b9a3c9;
+  }
+  .right-col { display:flex; flex-direction:column; gap:8px; align-items:stretch; flex:none; }
+  .lv {
+    background:linear-gradient(#f3c1a2,#e9a684);
+    border-radius:16px; padding:4px 18px 6px; text-align:center;
+    box-shadow:inset 0 -4px 0 rgba(160,90,55,.35), inset 0 3px 3px rgba(255,255,255,.5);
+    font-weight:700; font-size:24px; color:#fff;
+    text-shadow:0 2px 0 #a98db8; -webkit-text-stroke:1px #b9a3c9;
+  }
+  .sun {
+    background:linear-gradient(#f3c1a2,#e9a684);
+    border-radius:20px; padding:5px 8px;
+    box-shadow:inset 0 -4px 0 rgba(160,90,55,.35), inset 0 3px 3px rgba(255,255,255,.5);
+    display:flex; justify-content:flex-end; font-size:20px;
+  }
+  .tab {
+    width:150px; margin:-4px auto 0;
+    background:linear-gradient(#ffcf4d,#f5a91e);
+    border-radius:0 0 20px 20px;
+    padding:10px 14px 14px;
+    clip-path:polygon(0 0, 100% 0, 100% 78%, 50% 100%, 0 78%);
+    display:flex; align-items:center; justify-content:center; gap:8px;
+    box-shadow:0 6px 12px rgba(150,100,10,.25);
+  }
+  .tab .arr { font-size:22px; color:#eef4ff; text-shadow:0 2px 0 #7f9bd8; }
+  .tab .num {
+    font-weight:700; font-size:26px; color:#fff;
+    text-shadow:0 3px 0 #c9880e; -webkit-text-stroke:1px #d99a1a;
+  }
+  .timer.urgent .big-num { color:#ffdede; animation:pulse .6s infinite; }
+  @keyframes pulse { 50% { transform:scale(1.12); } }
+
+  /* ---------- overlays ---------- */
+  #overlay {
+    position:fixed; inset:0; z-index:20;
+    background:rgba(70,60,90,.42); backdrop-filter:blur(3px);
+    display:flex; align-items:center; justify-content:center;
+    opacity:0; pointer-events:none; transition:opacity .25s;
+  }
+  #overlay.show { opacity:1; pointer-events:auto; }
+  .card {
+    background:linear-gradient(#fdf6de,#f6e9bf);
+    border:6px solid #f0b23c; border-bottom-width:10px;
+    border-radius:36px; padding:36px 44px 34px;
+    text-align:center; max-width:min(420px, 88vw);
+    box-shadow:0 20px 50px rgba(60,40,10,.35), inset 0 4px 0 rgba(255,255,255,.9);
+    transform:scale(.85); transition:transform .25s cubic-bezier(.34,1.56,.64,1);
+  }
+  #overlay.show .card { transform:scale(1); }
+  .card .emoji { font-size:56px; }
+  .card h1 {
+    font-size:34px; font-weight:700; color:#fff; margin:8px 0 6px;
+    text-shadow:0 3px 0 #d98f2b, 0 5px 8px rgba(140,80,10,.3);
+    -webkit-text-stroke:1.5px #e0a234;
+  }
+  .card p { color:#9a7b3f; font-weight:600; font-size:17px; line-height:1.45; margin-bottom:22px; }
+  .btn {
+    font-family:inherit; font-weight:700; font-size:24px; color:#fff;
+    background:linear-gradient(#8fe05a,#5cbf35);
+    border:none; border-radius:22px; padding:14px 42px;
+    box-shadow:0 6px 0 #3f9421, inset 0 3px 3px rgba(255,255,255,.6);
+    cursor:pointer; text-shadow:0 2px 0 #4aa528;
+    transition:transform .1s;
+  }
+  .btn:active { transform:translateY(4px); box-shadow:0 2px 0 #3f9421; }
+
+  #toast {
+    position:fixed; top:44%; left:50%; transform:translate(-50%,-50%) scale(.7);
+    z-index:15; pointer-events:none; opacity:0;
+    font-size:46px; font-weight:700; color:#fff;
+    text-shadow:0 4px 0 #d98f2b, 0 7px 12px rgba(120,70,10,.4);
+    -webkit-text-stroke:2px #e8a83c;
+    transition:opacity .3s, transform .3s cubic-bezier(.34,1.56,.64,1);
+    white-space:nowrap;
+  }
+  #toast.show { opacity:1; transform:translate(-50%,-50%) scale(1); }
+
+  #hint {
+    position:fixed; bottom:calc(20px + env(safe-area-inset-bottom)); left:50%; transform:translateX(-50%);
+    z-index:9; color:#9a97a8; font-weight:600; font-size:14px; text-align:center;
+    pointer-events:none; transition:opacity 1s; width:90%;
+  }
+
+  /* ---------- dar telefon ekranları (iPhone 19.5:9) ---------- */
+  @media (max-width:440px) {
+    #hud { top:calc(10px + env(safe-area-inset-top)); width:calc(100% - 20px); }
+    .bar { padding:8px 10px; gap:8px; border-radius:26px; border-width:4px; border-bottom-width:6px; }
+    .gear { width:44px; height:44px; font-size:20px; }
+    .timer { padding:7px 14px 9px; gap:6px; border-radius:18px; }
+    .timer .clock { font-size:20px; }
+    .big-num { font-size:24px; }
+    .lv { font-size:18px; padding:3px 12px 5px; }
+    .sun { font-size:15px; padding:4px 6px; }
+    .tab { width:118px; padding:8px 10px 12px; }
+    .tab .arr { font-size:17px; }
+    .tab .num { font-size:20px; }
+    .card { padding:26px 24px; border-radius:28px; }
+    .card .emoji { font-size:44px; }
+    .card h1 { font-size:25px; }
+    .card p { font-size:15px; }
+    .btn { font-size:20px; padding:12px 32px; }
+    #toast { font-size:34px; }
+    #hint { font-size:12px; }
+  }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div id="hud">
+  <div class="bar">
+    <button class="gear" id="btnRestart" title="Seviyeyi yeniden başlat">⚙️</button>
+    <div class="timer" id="timerBox"><span class="clock">⏱️</span><span class="big-num" id="timeTxt">02:00</span></div>
+    <div class="right-col">
+      <div class="lv">Lv <span id="lvTxt">1</span></div>
+      <div class="sun">🌞</div>
+    </div>
+  </div>
+  <div class="tab"><span class="arr">⬆️</span><span class="num" id="cntTxt">0</span></div>
+</div>
+
+<div id="toast"></div>
+<div id="hint">Küpü döndürmek için sürükle · Okları çıkarmak için dokun</div>
+
+<div id="overlay">
+  <div class="card">
+    <div class="emoji" id="ovEmoji">🧊</div>
+    <h1 id="ovTitle">ARROW OUT 3D</h1>
+    <p id="ovText">Oklara dokun! Önü boşsa uçup gider, doluysa çarpıp geri döner. Süre bitmeden küpü temizle!</p>
+    <button class="btn" id="ovBtn">Oyna</button>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+/* =========================================================
+   ARROW OUT 3D — sevimli küp bulmaca
+   ========================================================= */
+const COLORS = [0xff6fd8, 0x9d6bff, 0xffa32e, 0x45c8ff, 0x7ede6a, 0xff6b81, 0xffd23f];
+const CUBE   = 3.8;                 // kırmızı gövde kenarı
+const HALF   = CUBE / 2;
+const PLATE  = 3.56;                // beyaz yüz plakası
+const GRID_SPAN = 3.3;              // okların yerleştiği alan
+
+// yüz tanımları: n = normal, u = yatay eksen, v = dikey eksen
+const FACES = [
+  { n:[ 0, 0, 1], u:[ 1,0,0], v:[0,1, 0] },
+  { n:[ 0, 0,-1], u:[-1,0,0], v:[0,1, 0] },
+  { n:[ 1, 0, 0], u:[ 0,0,-1], v:[0,1, 0] },
+  { n:[-1, 0, 0], u:[ 0,0, 1], v:[0,1, 0] },
+  { n:[ 0, 1, 0], u:[ 1,0,0], v:[0,0,-1] },
+  { n:[ 0,-1, 0], u:[ 1,0,0], v:[0,0, 1] },
+];
+const V3 = a => new THREE.Vector3(a[0], a[1], a[2]);
+
+/* ---------- sahne ---------- */
+const canvas   = document.getElementById('game');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+const scene  = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 100);
+camera.position.set(0, 0.4, 11);
+camera.lookAt(0, 0, 0);
+
+scene.add(new THREE.AmbientLight(0xffffff, 0.72));
+const key = new THREE.DirectionalLight(0xffffff, 0.85);
+key.position.set(4, 7, 6);
+scene.add(key);
+const fill = new THREE.DirectionalLight(0xcfd8ff, 0.35);
+fill.position.set(-5, -3, -4);
+scene.add(fill);
+
+const cubeGroup = new THREE.Group();
+cubeGroup.quaternion.setFromEuler(new THREE.Euler(-0.45, 0.75, 0.12));
+scene.add(cubeGroup);
+
+function resize() {
+  const w = window.innerWidth, h = window.innerHeight;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  camera.fov = 42;
+  // küpün köşegen yarıçapı her açıda ekrana sığacak şekilde mesafeyi hesapla
+  const rad = (CUBE * Math.sqrt(3) / 2) * 1.28;
+  const fy  = camera.fov * Math.PI / 180;
+  const fx  = 2 * Math.atan(Math.tan(fy / 2) * camera.aspect);
+  camera.position.z = Math.max(rad / Math.tan(fy / 2), rad / Math.tan(fx / 2)) + HALF;
+  camera.position.y = 0.4;
+  // uzun ekranlarda küpü biraz aşağı kaydır ki üst bar ile çakışmasın
+  camera.lookAt(0, h / w > 1.6 ? 0.55 : 0, 0);
+  camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', resize);
+resize();
+
+/* ---------- boş yüz için turuncu "serpantin" ikonu ---------- */
+function makeIconTexture() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 512;
+  const x = c.getContext('2d');
+  x.strokeStyle = '#f59c1e';
+  x.lineCap = x.lineJoin = 'round';
+  x.lineWidth = 30;
+  // dış çerçeve
+  x.beginPath();
+  x.roundRect ? x.roundRect(64, 64, 384, 384, 64) : x.rect(64, 64, 384, 384);
+  x.stroke();
+  x.lineWidth = 34;
+  // sol kısa ok
+  x.beginPath(); x.moveTo(150, 150); x.lineTo(150, 330); x.stroke();
+  x.beginPath(); x.moveTo(150, 330); x.lineTo(122, 296); x.moveTo(150, 330); x.lineTo(178, 296); x.stroke();
+  // sağ hairpin ok
+  x.beginPath();
+  x.moveTo(236, 150); x.lineTo(236, 320);
+  x.arc(281, 320, 45, Math.PI, 0, true);
+  x.lineTo(326, 200);
+  x.arc(371, 200, 45, Math.PI, 0, false);
+  x.lineTo(416, 340);
+  x.stroke();
+  x.beginPath(); x.moveTo(416, 340); x.lineTo(388, 306); x.moveTo(416, 340); x.lineTo(444, 306); x.stroke();
+  const t = new THREE.CanvasTexture(c);
+  t.anisotropy = 4;
+  return t;
+}
+const iconTex = makeIconTexture();
+
+/* ---------- ses ---------- */
+let AC = null;
+function audio() {
+  if (!AC) AC = new (window.AudioContext || window.webkitAudioContext)();
+  if (AC.state === 'suspended') AC.resume();
+  return AC;
+}
+function tone(f0, f1, dur, type, vol) {
+  try {
+    const ac = audio(), o = ac.createOscillator(), g = ac.createGain();
+    o.type = type; o.frequency.setValueAtTime(f0, ac.currentTime);
+    o.frequency.exponentialRampToValueAtTime(Math.max(f1, 1), ac.currentTime + dur);
+    g.gain.setValueAtTime(vol, ac.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + dur);
+    o.connect(g); g.connect(ac.destination);
+    o.start(); o.stop(ac.currentTime + dur);
+  } catch (e) {}
+}
+const sndPop  = () => { tone(520, 980, 0.16, 'sine', 0.25); tone(1040, 1600, 0.12, 'triangle', 0.12); };
+const sndThud = () => tone(150, 70, 0.18, 'triangle', 0.3);
+const sndWin  = () => [523, 659, 784, 1047].forEach((f, i) =>
+                    setTimeout(() => tone(f, f, 0.22, 'sine', 0.22), i * 120));
+
+/* ---------- oyun durumu ---------- */
+let level = 1, arrows = [], faceGroups = [], anims = [];
+let timeLeft = 120, timerId = null, playing = false;
+
+const $ = id => document.getElementById(id);
+function updHud() {
+  $('lvTxt').textContent  = level;
+  $('cntTxt').textContent = arrows.length;
+  const m = Math.floor(timeLeft / 60), s = timeLeft % 60;
+  $('timeTxt').textContent = String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
+  $('timerBox').classList.toggle('urgent', playing && timeLeft <= 10);
+}
+
+/* ---------- küp gövdesi ---------- */
+let solids = [];   // ışın testinde engel olarak kullanılacak gövde + plakalar
+function buildCubeBody(activeFaces) {
+  solids = [];
+  const body = new THREE.Mesh(
+    new THREE.BoxGeometry(CUBE, CUBE, CUBE),
+    new THREE.MeshStandardMaterial({ color:0xe8564a, roughness:0.55 })
+  );
+  cubeGroup.add(body);
+  solids.push(body);
+
+  faceGroups = [];
+  FACES.forEach((f, i) => {
+    const g = new THREE.Group();
+    const m = new THREE.Matrix4().makeBasis(V3(f.u), V3(f.v), V3(f.n));
+    g.quaternion.setFromRotationMatrix(m);
+    cubeGroup.add(g);
+    faceGroups.push(g);
+
+    const plate = new THREE.Mesh(
+      new THREE.BoxGeometry(PLATE, PLATE, 0.16),
+      new THREE.MeshStandardMaterial({ color:0xfdfbf6, roughness:0.4 })
+    );
+    plate.position.z = HALF;          // yarısı dışarı taşar → kırmızı çerçeve görünür
+    g.add(plate);
+    solids.push(plate);
+
+    if (!activeFaces.includes(i)) {   // boş yüzlere serpantin ikonu
+      const icon = new THREE.Mesh(
+        new THREE.PlaneGeometry(2.6, 2.6),
+        new THREE.MeshBasicMaterial({ map:iconTex, transparent:true })
+      );
+      icon.position.z = HALF + 0.085;
+      g.add(icon);
+    }
+  });
+}
+
+/* ---------- ok geometrisi ---------- */
+function arrowMesh(len, cell, color) {
+  const w2 = cell * 0.27, aw = cell * 0.44, h = cell * 0.34;
+  const headLen = cell * 0.6, pad = cell * 0.06;
+  const x0 = -cell * 0.5 + pad + w2;          // yuvarlak kuyruğun merkezi
+  const x1 =  len * cell - cell * 0.5 - pad;  // ucun sivri noktası
+  const xh =  x1 - headLen;
+
+  const s = new THREE.Shape();
+  s.moveTo(x0, -w2);
+  s.lineTo(xh, -w2);
+  s.lineTo(xh, -aw);
+  s.lineTo(x1, 0);
+  s.lineTo(xh, aw);
+  s.lineTo(xh, w2);
+  s.lineTo(x0, w2);
+  s.absarc(x0, 0, w2, Math.PI / 2, Math.PI * 1.5, false);
+
+  const geo = new THREE.ExtrudeGeometry(s, {
+    depth:h, bevelEnabled:true, bevelThickness:0.025, bevelSize:0.025, bevelSegments:2, curveSegments:10
+  });
+  const mat = new THREE.MeshStandardMaterial({ color, roughness:0.32, metalness:0.05 });
+  return new THREE.Mesh(geo, mat);
+}
+
+/* ---------- seviye üretimi (her zaman çözülebilir) ---------- */
+function levelConfig(lv) {
+  return {
+    faces:   Math.min(2 + Math.floor((lv - 1) / 2), 6),
+    perFace: Math.min(3 + Math.floor((lv - 1) / 2), 8),
+    N:       Math.min(6 + Math.floor((lv - 1) / 3), 9),
+    time:    120,
+  };
+}
+
+function generateFace(faceIdx, N, count, cell) {
+  const occ = new Set(), placed = [];
+  const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
+  let tries = 0;
+  while (placed.length < count && tries++ < 500) {
+    const dir = dirs[(Math.random() * 4) | 0];
+    const len = 2 + ((Math.random() * Math.min(3, N - 2)) | 0);
+    const c0 = (Math.random() * N) | 0, r0 = (Math.random() * N) | 0;
+    const cells = [];
+    let ok = true;
+    for (let i = 0; i < len; i++) {
+      const c = c0 + dir[0] * i, r = r0 + dir[1] * i;
+      if (c < 0 || c >= N || r < 0 || r >= N || occ.has(c + ',' + r)) { ok = false; break; }
+      cells.push([c, r]);
+    }
+    if (!ok) continue;
+    // yerleştirme anında önü açık olmalı → ters sırada sökülerek her zaman çözülür
+    for (let i = len; ; i++) {
+      const c = c0 + dir[0] * i, r = r0 + dir[1] * i;
+      if (c < 0 || c >= N || r < 0 || r >= N) break;
+      if (occ.has(c + ',' + r)) { ok = false; break; }
+    }
+    if (!ok) continue;
+    cells.forEach(([c, r]) => occ.add(c + ',' + r));
+    placed.push({ face:faceIdx, c0, r0, dir, len });
+  }
+
+  // meshleri oluştur
+  placed.forEach(a => {
+    const color = COLORS[(Math.random() * COLORS.length) | 0];
+    const mesh = arrowMesh(a.len, cell, color);
+    const cx = (a.c0 - N / 2 + 0.5) * cell;
+    const cy = (a.r0 - N / 2 + 0.5) * cell;
+    mesh.position.set(cx, cy, HALF + 0.09);
+    mesh.rotation.z = Math.atan2(a.dir[1], a.dir[0]);
+    faceGroups[a.face].add(mesh);
+    a.mesh = mesh; a.busy = false; a.N = N; a.cell = cell;
+    arrows.push(a);
+  });
+}
+
+function startLevel(lv) {
+  level = lv;
+  anims = []; arrows = [];
+  while (cubeGroup.children.length) {
+    const ch = cubeGroup.children.pop();
+    ch.traverse && ch.traverse(o => { if (o.geometry) o.geometry.dispose(); });
+    cubeGroup.remove(ch);
+  }
+  const cfg = levelConfig(lv);
+  const cell = GRID_SPAN / cfg.N;
+  const all = [0,1,2,3,4,5].sort(() => Math.random() - 0.5);
+  const active = all.slice(0, cfg.faces);
+  buildCubeBody(active);
+  active.forEach(f => generateFace(f, cfg.N, cfg.perFace, cell));
+
+  timeLeft = cfg.time; playing = true;
+  clearInterval(timerId);
+  timerId = setInterval(() => {
+    if (!playing) return;
+    timeLeft--;
+    updHud();
+    if (timeLeft <= 0) { playing = false; clearInterval(timerId); showOverlay('lose'); }
+  }, 1000);
+  updHud();
+  toast('Seviye ' + lv);
+}
+
+/* ---------- oklara tıklama mantığı ---------- */
+function cellsOf(a) {
+  const s = new Set();
+  for (let i = 0; i < a.len; i++)
+    s.add((a.c0 + a.dir[0] * i) + ',' + (a.r0 + a.dir[1] * i));
+  return s;
+}
+function tryFire(a) {
+  if (a.busy || !playing) return;
+  // aynı yüzdeki diğer okların hücreleri
+  const occ = new Set();
+  arrows.forEach(o => { if (o !== a && o.face === a.face) cellsOf(o).forEach(k => occ.add(k)); });
+
+  let free = 0, blocked = false, bc = -1, br = -1;
+  for (let i = a.len; ; i++) {
+    const c = a.c0 + a.dir[0] * i, r = a.r0 + a.dir[1] * i;
+    if (c < 0 || c >= a.N || r < 0 || r >= a.N) break;
+    if (occ.has(c + ',' + r)) { blocked = true; bc = c; br = r; break; }
+    free++;
+  }
+
+  const dx = a.dir[0], dy = a.dir[1];
+  const px = a.mesh.position.x, py = a.mesh.position.y;
+  a.busy = true;
+
+  if (!blocked) {
+    sndPop();
+    // hücreleri ANINDA serbest bırak — arkadaki ok beklemeden çıkabilsin
+    arrows.splice(arrows.indexOf(a), 1);
+    updHud();
+    const dist = a.cell * (free + a.len) + 3.5;
+    a.mesh.material.transparent = true;
+    anims.push({ t0:performance.now(), dur:520, obj:a,
+      fn(p) {
+        const e = p * p * (1.5 - 0.5 * p) * (1 + 1.6 * p);   // hızlanan çıkış
+        a.mesh.position.set(px + dx * dist * e, py + dy * dist * e, a.mesh.position.z);
+        if (p > 0.55) a.mesh.material.opacity = 1 - (p - 0.55) / 0.45;
+      },
+      done() {
+        faceGroups[a.face].remove(a.mesh);
+        a.mesh.geometry.dispose();
+        if (arrows.length === 0 && playing) {
+          playing = false; clearInterval(timerId);
+          sndWin();
+          setTimeout(() => showOverlay('win'), 450);
+        }
+      }
+    });
+  } else {
+    sndThud();
+    // engelleyen oku kısa süre kırmızı yak → oyuncu sırayı anlasın
+    const blocker = arrows.find(o => o !== a && o.face === a.face && cellsOf(o).has(bc + ',' + br));
+    if (blocker) {
+      const bm = blocker.mesh.material, bBase = bm.emissive.getHex();
+      bm.emissive.setHex(0x7a1414);
+      setTimeout(() => bm.emissive.setHex(bBase), 320);
+    }
+    const D = a.cell * free + a.cell * 0.22;
+    const mat = a.mesh.material, base = mat.emissive.getHex();
+    mat.emissive.setHex(0x661111);
+    anims.push({ t0:performance.now(), dur:420, obj:a,
+      fn(p) {
+        const s = Math.sin(Math.min(p, 1) * Math.PI) * D;
+        const wob = p > 0.5 ? Math.sin(p * 40) * 0.02 * (1 - p) : 0;
+        a.mesh.position.set(px + dx * s + dy * wob, py + dy * s + dx * wob, a.mesh.position.z);
+      },
+      done() { a.mesh.position.set(px, py, a.mesh.position.z); mat.emissive.setHex(base); a.busy = false; }
+    });
+    return;
+  }
+}
+
+/* ---------- girdi: sürükle-döndür + dokun ---------- */
+const ray = new THREE.Raycaster(), ptr = new THREE.Vector2();
+let dragging = false, moved = 0, lastX = 0, lastY = 0, downX = 0, downY = 0;
+
+canvas.addEventListener('pointerdown', e => {
+  dragging = true; moved = 0;
+  lastX = downX = e.clientX; lastY = downY = e.clientY;
+  canvas.setPointerCapture(e.pointerId);
+});
+canvas.addEventListener('pointermove', e => {
+  if (!dragging) return;
+  const dx = e.clientX - lastX, dy = e.clientY - lastY;
+  lastX = e.clientX; lastY = e.clientY;
+  moved += Math.abs(dx) + Math.abs(dy);
+  if (moved > 6) {
+    const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(dy * 0.006, dx * 0.006, 0));
+    cubeGroup.quaternion.premultiply(q);
+  }
+});
+canvas.addEventListener('pointerup', e => {
+  dragging = false;
+  const tapDist = Math.hypot(e.clientX - downX, e.clientY - downY);
+  if (tapDist > 12 || !playing) return;   // parmak titremesine tolerans
+  ptr.x =  (e.clientX / window.innerWidth)  * 2 - 1;
+  ptr.y = -(e.clientY / window.innerHeight) * 2 + 1;
+  ray.setFromCamera(ptr, camera);
+  // küp gövdesi + plakalar da testte: ışın küpün içinden geçip
+  // arka yüzdeki görünmez oku ateşleyemez
+  const hit = ray.intersectObjects(arrows.map(a => a.mesh).concat(solids), false)[0];
+  if (hit) {
+    const a = arrows.find(x => x.mesh === hit.object);
+    if (a) { tryFire(a); $('hint').style.opacity = 0; }
+  }
+});
+
+/* ---------- katmanlar (overlay / toast) ---------- */
+let ovMode = 'start';
+function showOverlay(mode) {
+  ovMode = mode;
+  const E = $('ovEmoji'), T = $('ovTitle'), P = $('ovText'), B = $('ovBtn');
+  if (mode === 'start') {
+    E.textContent = '🧊'; T.textContent = 'ARROW OUT 3D';
+    P.textContent = 'Oklara dokun! Önü boşsa uçup gider, doluysa çarpıp geri döner. Küpü döndürüp tüm yüzleri temizle!';
+    B.textContent = 'Oyna';
+  } else if (mode === 'win') {
+    E.textContent = '🎉'; T.textContent = 'Seviye ' + level + ' Tamamlandı!';
+    P.textContent = 'Harikasın! Sıradaki küp seni bekliyor…';
+    B.textContent = 'Sonraki Seviye';
+  } else {
+    E.textContent = '⏰'; T.textContent = 'Süre Doldu!';
+    P.textContent = 'Kalan ok: ' + arrows.length + '. Bir daha dene, bu sefer olacak!';
+    B.textContent = 'Tekrar Dene';
+  }
+  $('overlay').classList.add('show');
+}
+$('ovBtn').addEventListener('click', () => {
+  audio();
+  $('overlay').classList.remove('show');
+  if (ovMode === 'start')      startLevel(1);
+  else if (ovMode === 'win')   startLevel(level + 1);
+  else                         startLevel(level);
+});
+$('btnRestart').addEventListener('click', () => { if (playing) startLevel(level); });
+
+let toastId = null;
+function toast(txt) {
+  const t = $('toast');
+  t.textContent = txt;
+  t.classList.add('show');
+  clearTimeout(toastId);
+  toastId = setTimeout(() => t.classList.remove('show'), 1300);
+}
+
+/* ---------- ana döngü ---------- */
+function loop(now) {
+  requestAnimationFrame(loop);
+  for (let i = anims.length - 1; i >= 0; i--) {
+    const A = anims[i];
+    const p = Math.min((now - A.t0) / A.dur, 1);
+    A.fn(p);
+    if (p >= 1) { anims.splice(i, 1); A.done && A.done(); }
+  }
+  if (!dragging) {  // hafif nefes alma hareketi
+    cubeGroup.position.y = Math.sin(now * 0.0012) * 0.06;
+  }
+  renderer.render(scene, camera);
+}
+requestAnimationFrame(loop);
+
+showOverlay('start');
+updHud();
+</script>
+</body>
+</html>
